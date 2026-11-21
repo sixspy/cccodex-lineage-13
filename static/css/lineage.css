@@ -48,3 +48,7 @@ input, select {
 }
 h2,h3 { margin: 0 0 .5rem; }
 pre { white-space: pre-wrap; font-size: .8rem; }
+.tag-dead { border-color: var(--danger); color: #ffb0b0; background: #3a1d1d; }
+.tag-ok { border-color: #4c8c6b; color: #b8e6cd; background: #16301f; }
+.dead-card { border-color: var(--danger); }
+code { background: #0d1816; padding: .1rem .35rem; border-radius: 6px; }

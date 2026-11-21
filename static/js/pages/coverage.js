@@ -10,10 +10,10 @@ export async function renderCoverage(view, setMsg) {
       </div>
     </section>
     <section class="wall" style="margin-top:1rem">
-      ${(reports.items || []).map((r) => `<article class="card">
+      ${(reports.items || []).map((r) => `<article class="card ${r.dead_letter_count ? 'dead-card' : ''}">
         <h3>报告 #${r.id}</h3>
         <p>${r.summary}</p>
-        <p class="muted">节点 ${r.node_count} · 已发布边 ${r.edge_count} · 孤儿 ${r.orphan_count} · 草稿边 ${r.uncovered_edges}</p>
+        <p class="muted">节点 ${r.node_count} · 已发布边 ${r.edge_count} · 孤儿 ${r.orphan_count} · 草稿边 ${r.uncovered_edges} · 死信隔离 ${r.dead_letter_count || 0}</p>
       </article>`).join('') || '<p class="muted">暂无对账报告</p>'}
     </section>`;
   document.getElementById('go').onclick = async () => {

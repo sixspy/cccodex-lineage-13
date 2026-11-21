@@ -7,6 +7,7 @@ from itsdangerous import BadSignature, URLSafeSerializer
 from app.config import Config
 from app.seed import seed_if_needed
 from app.services import coverage as coverage_svc
+from app.services import deadletter as deadletter_svc
 from app.services import edges as edges_svc
 from app.services import impact as impact_svc
 from app.services import nodes as nodes_svc
@@ -198,6 +199,49 @@ def create_app() -> Bottle:
     def api_edges_void(edge_id):
         _require_user()
         return _json({"item": edges_svc.void_edge(edge_id)})
+
+    @app.get("/api/dead-letters")
+    @wrap
+    def api_dead_letters_list():
+        _require_user()
+        status = request.query.get("status") or None
+        return _json({
+            "items": deadletter_svc.list_vouchers(status),
+            "mode": deadletter_svc.DEAD_LETTER_MODE,
+            "forbidden_mode": deadletter_svc.FORBIDDEN_MODE,
+            "isolated_count": deadletter_svc.open_count(),
+        })
+
+    @app.post("/api/edges/<edge_id:int>/dead-letter")
+    @wrap
+    def api_edges_dead_letter(edge_id):
+        user = _require_user()
+        body = _read_json()
+        voucher = deadletter_svc.send_edge_to_dead_letter(
+            edge_id, str(body.get("reason") or ""), user
+        )
+        return _json({"voucher": voucher})
+
+    @app.post("/api/dead-letters/scan-ingest")
+    @wrap
+    def api_dead_letters_scan():
+        user = _require_user()
+        body = _read_json()
+        items = body.get("items")
+        if not isinstance(items, list):
+            raise ServiceError("items 必须是扫描清单数组")
+        return _json({"report": deadletter_svc.scan_ingest(items, user)})
+
+    @app.post("/api/dead-letters/<voucher_id:int>/reconcile")
+    @wrap
+    def api_dead_letters_reconcile(voucher_id):
+        _require_user()
+        body = _read_json()
+        return _json({
+            "voucher": deadletter_svc.reconcile_voucher(
+                voucher_id, str(body.get("note") or "")
+            )
+        })
 
     @app.get("/api/impact/jobs")
     @wrap

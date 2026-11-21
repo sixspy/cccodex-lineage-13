@@ -2,16 +2,22 @@
 from __future__ import annotations
 
 from app.db import get_db
+from app.services import deadletter
 from app.services.errors import ServiceError
 
 
 def list_jobs(db_path: str | None = None) -> list[dict]:
+    # 隔离条数：待核齐死信凭证数（旁路账册模式，全站同一隔离口径）
+    isolated = deadletter.open_count(db_path)
     with get_db(db_path) as conn:
         rows = conn.execute(
             "SELECT j.*, n.node_code, n.table_name FROM impact_jobs j "
             "JOIN lineage_nodes n ON n.id=j.root_node_id ORDER BY j.id DESC"
         ).fetchall()
-        return [dict(r) for r in rows]
+        items = [dict(r) for r in rows]
+        for it in items:
+            it["isolated_count"] = isolated
+        return items
 
 
 def job_detail(job_id: int, db_path: str | None = None) -> dict:
@@ -69,6 +75,7 @@ def start_impact(root_node_id: int, db_path: str | None = None) -> dict:
                 "WHERE upstream_id=? AND status='已发布'",
                 (cur_id,),
             ).fetchall()
+            # 已死信/草稿/已作废边一律不参与展开，断边不混入活关系
             for kid in kids:
                 kid_id = int(kid["downstream_id"])
                 if kid_id not in seen:

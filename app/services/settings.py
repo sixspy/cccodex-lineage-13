@@ -2,7 +2,11 @@
 from __future__ import annotations
 
 from app.db import get_db
+from app.services.deadletter import DEAD_LETTER_MODE
 from app.services.errors import ServiceError
+
+# 断边处理命运只兑现一种，模式键只读
+DEAD_LETTER_MODE_KEY = "dead_letter_mode"
 
 
 def list_settings(db_path: str | None = None) -> list[dict]:
@@ -18,6 +22,11 @@ def update_setting(key: str, value: str, db_path: str | None = None) -> dict:
     value = (value or "").strip()
     if not key or not value:
         raise ServiceError("参数键与值不能为空")
+    if key == DEAD_LETTER_MODE_KEY:
+        raise ServiceError(
+            f"断边命运已固定为「{DEAD_LETTER_MODE}」，独立队列吞没模式不可并存、不可切换",
+            409,
+        )
     with get_db(db_path) as conn:
         row = conn.execute(
             "SELECT * FROM lab_settings WHERE key=?", (key,)

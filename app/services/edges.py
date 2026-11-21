@@ -70,6 +70,8 @@ def publish_edge(edge_id: int, db_path: str | None = None) -> dict:
         ).fetchone()
         if not edge:
             raise ServiceError("边不存在", 404)
+        if edge["status"] == "已死信":
+            raise ServiceError("死信边须先在死信页核齐，不可直接发布", 409)
         if edge["status"] != "草稿":
             raise ServiceError("仅草稿可发布", 409)
         for nid in (edge["upstream_id"], edge["downstream_id"]):
@@ -99,6 +101,8 @@ def void_edge(edge_id: int, db_path: str | None = None) -> dict:
         ).fetchone()
         if not edge:
             raise ServiceError("边不存在", 404)
+        if edge["status"] == "已死信":
+            raise ServiceError("死信边不可作废，请到死信页核齐", 409)
         if edge["status"] == "已作废":
             raise ServiceError("边已作废", 409)
         conn.execute(

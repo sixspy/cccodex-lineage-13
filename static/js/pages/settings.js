@@ -10,8 +10,10 @@ export async function renderSettings(view, setMsg) {
           <h3>${s.label}</h3>
           <p class="muted">${s.key}</p>
           <div class="row">
-            <input data-k="${s.key}" value="${s.value}" />
-            <button data-save="${s.key}" class="primary" type="button">保存</button>
+            <input data-k="${s.key}" value="${s.value}" ${s.key === 'dead_letter_mode' ? 'disabled' : ''} />
+            ${s.key === 'dead_letter_mode'
+              ? '<button class="primary" type="button" disabled>命运锁定不可改</button>'
+              : '<button data-save="' + s.key + '" class="primary" type="button">保存</button>'}
           </div>
         </article>`).join('')}
       </div>

@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from app.db import SCHEMA, get_db, init_schema
+from app.services.deadletter import DEAD_LETTER_MODE, compute_fingerprint, short_fp
 
-SCHEMA_VERSION = "lineage-v1"
+SCHEMA_VERSION = "lineage-v2"
 
 
 def _schema_compatible(conn) -> bool:
@@ -30,6 +31,7 @@ def seed_if_needed(db_path: str | None = None) -> dict:
                 "notify_logs",
                 "impact_hits",
                 "impact_jobs",
+                "dead_letter_vouchers",
                 "coverage_reports",
                 "lineage_edges",
                 "lineage_nodes",
@@ -80,11 +82,46 @@ def seed_if_needed(db_path: str | None = None) -> dict:
             ,
             (ids["N-ODS-ORD"], ids["N-ADS-DASH"]),
         )
+
+        # ---- 断边死信样例（旁路账册模式）----
+        # 1) 停用节点 + 挂在它身上的已死信边（人工送死信，凭证挂主表边）
+        cur = conn.execute(
+            "INSERT INTO lineage_nodes(node_code, table_name, layer, owner_team, status, note) "
+            "VALUES ('N-ODS-LEGACY','ods_legacy_snap','ODS','采集组','停用','历史快照已下线')"
+        )
+        legacy_id = cur.lastrowid
+        cur = conn.execute(
+            "INSERT INTO lineage_edges(edge_code, upstream_id, downstream_id, "
+            "transform_kind, status, note) VALUES ('E-BROKEN-1',?,?,'直抽','已死信','下游已停用')",
+            (legacy_id, ids["N-DWD-ORD"]),
+        )
+        broken_edge_id = cur.lastrowid
+        fp1 = compute_fingerprint("E-BROKEN-1", "N-ODS-LEGACY", "N-DWD-ORD", "直抽")
+        conn.execute(
+            "INSERT INTO dead_letter_vouchers(voucher_code, edge_id, edge_code, "
+            "upstream_ref, downstream_ref, transform_kind, fingerprint, short_fingerprint, "
+            "reason, source, status, created_by) "
+            "VALUES ('DL-0001',?,'E-BROKEN-1','N-ODS-LEGACY','N-DWD-ORD','直抽',?,?,"
+            "'上游节点已停用','人工送死信','待核齐','admin')",
+            (broken_edge_id, fp1, short_fp(fp1)),
+        )
+        # 2) 扫描发现、目录里根本没有的节点（扫描断边，凭证挂不上主表边）
+        fp2 = compute_fingerprint("E-BROKEN-2", "N-GHOST-TBL", "N-DWS-REV", "清洗")
+        conn.execute(
+            "INSERT INTO dead_letter_vouchers(voucher_code, edge_id, edge_code, "
+            "upstream_ref, downstream_ref, transform_kind, fingerprint, short_fingerprint, "
+            "reason, source, status, created_by) "
+            "VALUES ('DL-0002',NULL,'E-BROKEN-2','N-GHOST-TBL','N-DWS-REV','清洗',?,?,"
+            "'扫描引用了目录中不存在或已停用的节点','扫描断边','待核齐','admin')",
+            (fp2, short_fp(fp2)),
+        )
+
         conn.execute(
             "INSERT INTO lab_settings(key, value, label) VALUES "
             "('impact_max_hop','8','影响最大跳数'),"
             "('notify_channel','站内','默认通知渠道'),"
-            "('coverage_mode','严格','覆盖对账模式')"
+            "('coverage_mode','严格','覆盖对账模式'),"
+            f"('dead_letter_mode','{DEAD_LETTER_MODE}','断边处理命运（只读，独立队列吞没不可并存）')"
         )
         conn.execute("INSERT INTO meta(key, value) VALUES ('seeded','1')")
         conn.execute(
@@ -94,9 +131,10 @@ def seed_if_needed(db_path: str | None = None) -> dict:
         conn.execute("INSERT INTO meta(key, value) VALUES ('lab','表血缘影响台')")
         return {
             "seeded": True,
-            "nodes": len(nodes),
-            "edges": len(edges) + 1,
-            "settings": 3,
+            "nodes": len(nodes) + 1,
+            "edges": len(edges) + 2,
+            "dead_letters": 2,
+            "settings": 4,
         }
 
 
@@ -107,6 +145,7 @@ def reset_seed(db_path: str | None = None) -> None:
             "notify_logs",
             "impact_hits",
             "impact_jobs",
+            "dead_letter_vouchers",
             "coverage_reports",
             "lineage_edges",
             "lineage_nodes",

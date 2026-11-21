@@ -16,14 +16,16 @@ export async function renderEdges(view, setMsg) {
       </div>
     </section>
     <section class="wall" style="margin-top:1rem">
-      ${(edges.items || []).map((e) => `<article class="card">
+      ${(edges.items || []).map((e) => `<article class="card ${e.status === '已死信' ? 'dead-card' : ''}">
         <h3>${e.edge_code}</h3>
-        <span class="tag">${e.status}</span>
+        <span class="tag ${e.status === '已死信' ? 'tag-dead' : ''}">${e.status}</span>
         <p>${e.upstream_code} → ${e.downstream_code}</p>
         <p class="muted">${e.transform_kind} · ${e.upstream_table} → ${e.downstream_table}</p>
         <div class="row">
-          <button data-pub="${e.id}" class="primary" type="button">发布</button>
-          <button data-void="${e.id}" type="button">作废</button>
+          ${e.status === '草稿' ? '<button data-pub="' + e.id + '" class="primary" type="button">发布</button>' : ''}
+          ${e.status !== '已作废' && e.status !== '已死信' ? '<button data-void="' + e.id + '" type="button">作废</button>' : ''}
+          ${e.status !== '已死信' && e.status !== '已作废' ? '<button data-dl="' + e.id + '" type="button">送死信</button>' : ''}
+          ${e.status === '已死信' ? '<p class="muted">已隔离，凭证见死信页</p>' : ''}
         </div>
       </article>`).join('') || '<p class="muted">暂无边</p>'}
     </section>`;
@@ -56,6 +58,18 @@ export async function renderEdges(view, setMsg) {
       try {
         await api('/api/edges/' + btn.dataset.void + '/void', { method: 'POST', body: '{}' });
         setMsg('边已作废');
+        await renderEdges(view, setMsg);
+      } catch (e) { setMsg(e.message, true); }
+    };
+  });
+  view.querySelectorAll('[data-dl]').forEach((btn) => {
+    btn.onclick = async () => {
+      try {
+        const r = await api('/api/edges/' + btn.dataset.dl + '/dead-letter', {
+          method: 'POST',
+          body: JSON.stringify({ reason: '值班判定为断边，送入死信账册' }),
+        });
+        setMsg('已写死信凭证 ' + r.voucher.voucher_code + '，边已隔离');
         await renderEdges(view, setMsg);
       } catch (e) { setMsg(e.message, true); }
     };
